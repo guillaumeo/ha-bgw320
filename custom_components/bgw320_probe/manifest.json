@@ -1,0 +1,12 @@
+{
+  "domain": "bgw320_probe",
+  "name": "BGW320 Probe",
+  "codeowners": ["@guillaumeo"],
+  "config_flow": true,
+  "documentation": "https://github.com/guillaumeo/bgw320-probe",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/guillaumeo/bgw320-probe/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

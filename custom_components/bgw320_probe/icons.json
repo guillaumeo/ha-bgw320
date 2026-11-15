@@ -1,0 +1,68 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "broadband_connection": {
+        "default": "mdi:wan"
+      }
+    },
+    "sensor": {
+      "last_reboot": {
+        "default": "mdi:restart"
+      },
+      "speed_mbps": {
+        "default": "mdi:speedometer"
+      },
+      "rx_bytes": {
+        "default": "mdi:download-network"
+      },
+      "tx_bytes": {
+        "default": "mdi:upload-network"
+      },
+      "rx_packets": {
+        "default": "mdi:arrow-down-bold-box-outline"
+      },
+      "tx_packets": {
+        "default": "mdi:arrow-up-bold-box-outline"
+      },
+      "rx_errors": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "tx_errors": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "network_type": {
+        "default": "mdi:ethernet"
+      },
+      "line_state": {
+        "default": "mdi:cable-data"
+      },
+      "duplex": {
+        "default": "mdi:swap-horizontal"
+      },
+      "rx_drops": {
+        "default": "mdi:package-down"
+      },
+      "tx_drops": {
+        "default": "mdi:package-up"
+      },
+      "collisions": {
+        "default": "mdi:transit-connection-variant"
+      },
+      "tx_discards": {
+        "default": "mdi:trash-can-outline"
+      },
+      "firewall_packet_filter": {
+        "default": "mdi:shield-check-outline"
+      },
+      "firewall_ip_passthrough": {
+        "default": "mdi:shield-half-full"
+      },
+      "firewall_nat_default_server": {
+        "default": "mdi:server-security"
+      },
+      "firewall_advanced": {
+        "default": "mdi:shield-lock-outline"
+      }
+    }
+  }
+}

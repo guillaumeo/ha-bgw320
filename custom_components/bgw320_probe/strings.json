@@ -1,0 +1,115 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to AT&T BGW Gateway",
+        "description": "Enter the root URL of your AT&T BGW210 or BGW320 gateway.",
+        "data": {
+          "url": "Gateway URL",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "url": "Root URL of the gateway (for example, https://192.168.1.254).",
+          "verify_ssl": "Disable for the gateway's default self-signed certificate."
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure AT&T BGW Gateway",
+        "description": "Update the connection settings for your AT&T BGW gateway.",
+        "data": {
+          "url": "Gateway URL",
+          "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "url": "Root URL of the gateway (for example, https://192.168.1.254).",
+          "verify_ssl": "Disable for the gateway's default self-signed certificate."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the gateway",
+      "invalid_response": "Connected, but the response did not match an AT&T BGW status page",
+      "invalid_url": "Enter a valid http:// or https:// root URL without a path",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Device is already configured",
+      "reconfigure_successful": "Re-configuration was successful",
+      "unique_id_mismatch": "The gateway at this URL does not match the configured device"
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "broadband_connection": {
+        "name": "Broadband connection"
+      }
+    },
+    "sensor": {
+      "last_reboot": {
+        "name": "Last reboot"
+      },
+      "speed_mbps": {
+        "name": "Negotiated speed"
+      },
+      "rx_bytes": {
+        "name": "Broadband received"
+      },
+      "tx_bytes": {
+        "name": "Broadband transmitted"
+      },
+      "rx_packets": {
+        "name": "Received packets"
+      },
+      "tx_packets": {
+        "name": "Transmitted packets"
+      },
+      "rx_errors": {
+        "name": "Receive errors"
+      },
+      "tx_errors": {
+        "name": "Transmit errors"
+      },
+      "network_type": {
+        "name": "Broadband network type"
+      },
+      "line_state": {
+        "name": "Line state"
+      },
+      "duplex": {
+        "name": "Duplex"
+      },
+      "rx_drops": {
+        "name": "Receive drops"
+      },
+      "tx_drops": {
+        "name": "Transmit drops"
+      },
+      "collisions": {
+        "name": "Collisions"
+      },
+      "tx_discards": {
+        "name": "Transmit discards"
+      },
+      "firewall_packet_filter": {
+        "name": "Firewall packet filter"
+      },
+      "firewall_ip_passthrough": {
+        "name": "IP passthrough"
+      },
+      "firewall_nat_default_server": {
+        "name": "NAT default server"
+      },
+      "firewall_advanced": {
+        "name": "Firewall advanced"
+      }
+    }
+  },
+  "exceptions": {
+    "cannot_connect": {
+      "message": "Failed to connect to the AT&T BGW gateway."
+    },
+    "invalid_response": {
+      "message": "Received an unexpected status response from the AT&T BGW gateway."
+    }
+  }
+}
