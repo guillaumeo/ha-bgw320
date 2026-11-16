@@ -1,4 +1,4 @@
-"""Sensor platform for the BGW320 Probe integration."""
+"""Sensor platform for the AT&T BGW320 integration."""
 
 from __future__ import annotations
 
@@ -22,15 +22,15 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from .coordinator import BgwCoordinatorData, BgwProbeConfigEntry
-from .entity import BgwProbeEntity
+from .coordinator import BgwConfigEntry, BgwCoordinatorData
+from .entity import BgwEntity
 
 PARALLEL_UPDATES = 0
 
 
 @dataclass(frozen=True, kw_only=True)
 class BgwSensorEntityDescription(SensorEntityDescription):
-    """Describe a BGW320 Probe sensor."""
+    """Describe a AT&T BGW320 sensor."""
 
     value_fn: Callable[[BgwCoordinatorData], StateType | datetime]
     available_fn: Callable[[BgwCoordinatorData], bool] = lambda _: True
@@ -183,18 +183,18 @@ SENSORS: tuple[BgwSensorEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: BgwProbeConfigEntry,
+    entry: BgwConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up BGW320 Probe sensors from a config entry."""
+    """Set up AT&T BGW320 sensors from a config entry."""
     coordinator = entry.runtime_data
     async_add_entities(
         BgwSensorEntity(coordinator, description) for description in SENSORS
     )
 
 
-class BgwSensorEntity(BgwProbeEntity, SensorEntity):
-    """Representation of a BGW320 Probe sensor."""
+class BgwSensorEntity(BgwEntity, SensorEntity):
+    """Representation of a AT&T BGW320 sensor."""
 
     entity_description: BgwSensorEntityDescription
 

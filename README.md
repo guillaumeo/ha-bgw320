@@ -1,7 +1,7 @@
-# BGW320 Probe (`bgw320-probe`)
+# AT&T BGW320 for Home Assistant (`ha-bgw320`)
 
 <p align="center">
-  <img src="custom_components/bgw320_probe/brand/icon@2x.png" alt="BGW320 Probe Logo" width="128" height="128">
+  <img src="custom_components/bgw320/brand/icon@2x.png" alt="AT&T BGW320 Logo" width="128" height="128">
 </p>
 
 Native Home Assistant custom integration for read-only monitoring of **AT&T BGW210 and BGW320** gateways, inspired by [CCOSTAN/bgw-probe](https://github.com/CCOSTAN/bgw-probe).
@@ -22,20 +22,20 @@ Polls the gateway's unauthenticated status pages (`/cgi-bin/sysinfo.ha`, `/cgi-b
 
 ### HACS (Custom Repository)
 1. Open **HACS → Integrations → ⋮ → Custom repositories**.
-2. Add `https://github.com/guillaumeo/bgw320-probe` with category **Integration**.
-3. Install **BGW320 Probe** and restart Home Assistant.
+2. Add `https://github.com/guillaumeo/ha-bgw320` with category **Integration**.
+3. Install **AT&T BGW320** and restart Home Assistant.
 
 ### Manual
-1. Copy `custom_components/bgw320_probe` into your Home Assistant `<config>/custom_components/bgw320_probe` folder.
+1. Copy `custom_components/bgw320` into your Home Assistant `<config>/custom_components/bgw320` folder.
 2. Restart Home Assistant.
 
 ## Configuration
 
 1. Go to **Settings → Devices & services → Add Integration**.
-2. Search for **BGW320 Probe**.
+2. Search for **AT&T BGW320**.
 3. Enter your gateway root URL (default: `https://192.168.1.254`) and leave **Verify SSL certificate** disabled unless you have installed a trusted certificate on the gateway.
 
 ## Removal
 
-1. Go to **Settings → Devices & services → BGW320 Probe**.
-2. Select **⋮ → Delete**, then remove `custom_components/bgw320_probe` (or uninstall via HACS) and restart Home Assistant.
+1. Go to **Settings → Devices & services → AT&T BGW320**.
+2. Select **⋮ → Delete**, then remove `custom_components/bgw320` (or uninstall via HACS) and restart Home Assistant.

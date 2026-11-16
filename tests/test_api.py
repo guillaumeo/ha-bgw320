@@ -1,4 +1,4 @@
-"""Unit tests for the pure-Python BGW320 Probe API client and HTML parser."""
+"""Unit tests for the pure-Python AT&T BGW320 API client and HTML parser."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from conftest import BROADBAND_HTML, FIREWALL_HTML, SYSTEM_HTML
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from custom_components.bgw320_probe.api import (
+from custom_components.bgw320.api import (
     BgwConnectionError,
     BgwGatewayClient,
     BgwInvalidUrlError,

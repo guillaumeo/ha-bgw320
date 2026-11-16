@@ -1,4 +1,4 @@
-"""Config flow for the BGW320 Probe integration."""
+"""Config flow for the AT&T BGW320 integration."""
 
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ def _derive_unique_id(snapshot: BgwSnapshot, normalized_url: str) -> str:
     return netloc.lower()
 
 
-class BgwProbeConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle UI configuration and reconfiguration for BGW320 Probe."""
+class BgwConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle UI configuration and reconfiguration for AT&T BGW320."""
 
     VERSION = 1
 

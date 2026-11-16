@@ -1,4 +1,4 @@
-"""The BGW320 Probe integration."""
+"""The AT&T BGW320 integration."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import BgwGatewayClient
 from .const import DEFAULT_TIMEOUT, DEFAULT_VERIFY_SSL
-from .coordinator import BgwProbeConfigEntry, BgwProbeCoordinator
+from .coordinator import BgwConfigEntry, BgwCoordinator
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -16,8 +16,8 @@ PLATFORMS: list[Platform] = [
 ]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: BgwProbeConfigEntry) -> bool:
-    """Set up BGW320 Probe from a config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: BgwConfigEntry) -> bool:
+    """Set up AT&T BGW320 from a config entry."""
     verify_ssl: bool = entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL)
     session = async_get_clientsession(hass, verify_ssl=verify_ssl)
     client = BgwGatewayClient(
@@ -26,7 +26,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: BgwProbeConfigEntry) -> 
         timeout=DEFAULT_TIMEOUT,
     )
 
-    coordinator = BgwProbeCoordinator(hass, entry, client)
+    coordinator = BgwCoordinator(hass, entry, client)
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = coordinator
@@ -34,6 +34,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: BgwProbeConfigEntry) -> 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: BgwProbeConfigEntry) -> bool:
-    """Unload a BGW320 Probe config entry."""
+async def async_unload_entry(hass: HomeAssistant, entry: BgwConfigEntry) -> bool:
+    """Unload a AT&T BGW320 config entry."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

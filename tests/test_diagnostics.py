@@ -1,4 +1,4 @@
-"""Tests for BGW320 Probe diagnostics redaction."""
+"""Tests for AT&T BGW320 diagnostics redaction."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from homeassistant.components.diagnostics import REDACTED
 from homeassistant.const import CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 
-from custom_components.bgw320_probe.const import DOMAIN
-from custom_components.bgw320_probe.diagnostics import (
+from custom_components.bgw320.const import DOMAIN
+from custom_components.bgw320.diagnostics import (
     async_get_config_entry_diagnostics,
 )
 

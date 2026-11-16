@@ -1,4 +1,4 @@
-"""Diagnostics support for the BGW320 Probe integration."""
+"""Diagnostics support for the AT&T BGW320 integration."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant
 
-from .coordinator import BgwProbeConfigEntry
+from .coordinator import BgwConfigEntry
 
 TO_REDACT: set[str] = {
     CONF_URL,
@@ -21,9 +21,9 @@ TO_REDACT: set[str] = {
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
-    entry: BgwProbeConfigEntry,
+    entry: BgwConfigEntry,
 ) -> dict[str, Any]:
-    """Return redacted diagnostics for a BGW320 Probe config entry."""
+    """Return redacted diagnostics for a AT&T BGW320 config entry."""
     data = entry.runtime_data.data
     payload: dict[str, Any] = {
         "entry": {

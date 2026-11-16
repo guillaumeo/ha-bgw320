@@ -1,11 +1,11 @@
-"""Constants for the BGW320 Probe integration."""
+"""Constants for the AT&T BGW320 integration."""
 
 from __future__ import annotations
 
 import logging
 from datetime import timedelta
 
-DOMAIN = "bgw320_probe"
+DOMAIN = "bgw320"
 LOGGER = logging.getLogger(__package__)
 
 DEFAULT_URL = "https://192.168.1.254"

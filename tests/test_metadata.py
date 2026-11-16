@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from custom_components.bgw320_probe.binary_sensor import BINARY_SENSORS
-from custom_components.bgw320_probe.const import DOMAIN
-from custom_components.bgw320_probe.sensor import SENSORS
+from custom_components.bgw320.binary_sensor import BINARY_SENSORS
+from custom_components.bgw320.const import DOMAIN
+from custom_components.bgw320.sensor import SENSORS
 
 ROOT = Path(__file__).resolve().parents[1]
-COMP_DIR = ROOT / "custom_components" / "bgw320_probe"
+COMP_DIR = ROOT / "custom_components" / "bgw320"
 
 
 def test_manifest_and_hacs_metadata() -> None:
@@ -53,4 +53,3 @@ def test_brand_assets_are_valid_pngs() -> None:
         asset = brand_dir / filename
         assert asset.is_file(), f"Missing brand asset: {filename}"
         assert asset.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
-

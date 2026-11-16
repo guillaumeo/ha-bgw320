@@ -1,4 +1,4 @@
-"""Tests for the BGW320 Probe config and reconfigure flows."""
+"""Tests for the AT&T BGW320 config and reconfigure flows."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from homeassistant.const import CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
-from custom_components.bgw320_probe.const import DOMAIN
+from custom_components.bgw320.const import DOMAIN
 
 try:
     from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -43,7 +43,7 @@ async def test_user_flow_success_and_duplicate_abort(
     assert result["step_id"] == "user"
 
     with patch(
-        "custom_components.bgw320_probe.async_setup_entry", return_value=True
+        "custom_components.bgw320.async_setup_entry", return_value=True
     ) as mock_setup:
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
@@ -121,7 +121,7 @@ async def test_user_flow_errors_and_recovery(
 
     # 4. Unexpected error
     with patch(
-        "custom_components.bgw320_probe.config_flow.BgwGatewayClient.async_collect",
+        "custom_components.bgw320.config_flow.BgwGatewayClient.async_collect",
         side_effect=RuntimeError("boom"),
     ):
         res_unknown = await hass.config_entries.flow.async_configure(
@@ -134,7 +134,7 @@ async def test_user_flow_errors_and_recovery(
     # 5. Recovery
     aioclient_mock.clear_requests()
     _mock_gateway_pages(aioclient_mock)
-    with patch("custom_components.bgw320_probe.async_setup_entry", return_value=True):
+    with patch("custom_components.bgw320.async_setup_entry", return_value=True):
         res_ok = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_URL: "https://192.168.1.254", CONF_VERIFY_SSL: False},
@@ -156,7 +156,7 @@ async def test_unique_id_fallbacks_when_mac_missing(
     flow1 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    with patch("custom_components.bgw320_probe.async_setup_entry", return_value=True):
+    with patch("custom_components.bgw320.async_setup_entry", return_value=True):
         res1 = await hass.config_entries.flow.async_configure(
             flow1["flow_id"],
             {CONF_URL: "https://192.168.1.254", CONF_VERIFY_SSL: False},
@@ -176,7 +176,7 @@ async def test_unique_id_fallbacks_when_mac_missing(
     flow2 = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    with patch("custom_components.bgw320_probe.async_setup_entry", return_value=True):
+    with patch("custom_components.bgw320.async_setup_entry", return_value=True):
         res2 = await hass.config_entries.flow.async_configure(
             flow2["flow_id"],
             {CONF_URL: "https://BGW-Gateway.Local:8443", CONF_VERIFY_SSL: False},
@@ -202,7 +202,7 @@ async def test_reconfigure_flow_success_and_mismatch(
     assert result["type"] is FlowResultType.FORM
     assert result["step_id"] == "reconfigure"
 
-    with patch("custom_components.bgw320_probe.async_setup_entry", return_value=True):
+    with patch("custom_components.bgw320.async_setup_entry", return_value=True):
         result2 = await hass.config_entries.flow.async_configure(
             result["flow_id"],
             {CONF_URL: "https://192.168.10.254/", CONF_VERIFY_SSL: True},

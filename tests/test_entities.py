@@ -1,4 +1,4 @@
-"""Integration tests for BGW320 Probe coordinator, device registry, and entities."""
+"""Integration tests for AT&T BGW320 coordinator, device registry, and entities."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from custom_components.bgw320_probe.const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from custom_components.bgw320.const import DEFAULT_SCAN_INTERVAL, DOMAIN
 
 try:
     from pytest_homeassistant_custom_component.common import (

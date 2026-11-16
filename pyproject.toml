@@ -1,6 +1,6 @@
 [project]
-name = "bgw320-probe"
-version = "0.1.0"
+name = "ha-bgw320"
+version = "0.2.0"
 description = "Home Assistant custom integration for read-only AT&T BGW210/BGW320 gateway telemetry"
 readme = "README.md"
 requires-python = ">=3.12"

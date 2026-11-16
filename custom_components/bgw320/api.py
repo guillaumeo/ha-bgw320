@@ -19,7 +19,7 @@ PAGE_PATHS: dict[str, str] = {
 REQUIRED_PAGES: frozenset[str] = frozenset({"system", "broadband"})
 
 MAX_RESPONSE_BYTES = 1_000_000
-USER_AGENT = "bgw320-probe/0.1"
+USER_AGENT = "ha-bgw320/0.2"
 
 _MAC_RE = re.compile(
     r"^(?:[0-9a-fA-F]{2}([-:]))(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}$"
@@ -28,19 +28,19 @@ _MAC_RE = re.compile(
 _INVALID_MACS: frozenset[str] = frozenset({"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"})
 
 
-class BgwProbeError(Exception):
-    """Base exception for BGW320 Probe errors."""
+class BgwError(Exception):
+    """Base exception for AT&T BGW320 errors."""
 
 
-class BgwInvalidUrlError(BgwProbeError):
+class BgwInvalidUrlError(BgwError):
     """Raised when the configured gateway URL is invalid."""
 
 
-class BgwConnectionError(BgwProbeError):
+class BgwConnectionError(BgwError):
     """Raised when the gateway cannot be reached."""
 
 
-class BgwParseError(BgwProbeError):
+class BgwParseError(BgwError):
     """Raised when gateway HTML cannot be parsed into required fields."""
 
 

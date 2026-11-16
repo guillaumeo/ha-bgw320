@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for the BGW320 Probe integration."""
+"""DataUpdateCoordinator for the AT&T BGW320 integration."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import BgwConnectionError, BgwGatewayClient, BgwProbeError, BgwSnapshot
+from .api import BgwConnectionError, BgwError, BgwGatewayClient, BgwSnapshot
 from .const import BOOT_TIME_DRIFT_TOLERANCE, DEFAULT_SCAN_INTERVAL, DOMAIN, LOGGER
 
-type BgwProbeConfigEntry = ConfigEntry[BgwProbeCoordinator]
+type BgwConfigEntry = ConfigEntry[BgwCoordinator]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,18 +26,18 @@ class BgwCoordinatorData:
     last_reboot: datetime | None
 
 
-class BgwProbeCoordinator(DataUpdateCoordinator[BgwCoordinatorData]):
+class BgwCoordinator(DataUpdateCoordinator[BgwCoordinatorData]):
     """Coordinate periodic polling of an AT&T BGW gateway."""
 
-    config_entry: BgwProbeConfigEntry
+    config_entry: BgwConfigEntry
 
     def __init__(
         self,
         hass: HomeAssistant,
-        config_entry: BgwProbeConfigEntry,
+        config_entry: BgwConfigEntry,
         client: BgwGatewayClient,
     ) -> None:
-        """Initialize the BGW320 Probe coordinator."""
+        """Initialize the AT&T BGW320 coordinator."""
         super().__init__(
             hass,
             logger=LOGGER,
@@ -76,7 +76,7 @@ class BgwProbeCoordinator(DataUpdateCoordinator[BgwCoordinatorData]):
                 translation_domain=DOMAIN,
                 translation_key="cannot_connect",
             ) from err
-        except BgwProbeError as err:
+        except BgwError as err:
             raise UpdateFailed(
                 translation_domain=DOMAIN,
                 translation_key="invalid_response",

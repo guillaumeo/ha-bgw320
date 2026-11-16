@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for BGW320 Probe tests."""
+"""Shared pytest fixtures for AT&T BGW320 tests."""
 
 from __future__ import annotations
 

@@ -1,0 +1,12 @@
+{
+  "domain": "bgw320",
+  "name": "AT&T BGW320",
+  "codeowners": ["@guillaumeo"],
+  "config_flow": true,
+  "documentation": "https://github.com/guillaumeo/ha-bgw320",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/guillaumeo/ha-bgw320/issues",
+  "requirements": [],
+  "version": "0.2.0"
+}

@@ -1,4 +1,4 @@
-"""Binary sensor platform for the BGW320 Probe integration."""
+"""Binary sensor platform for the AT&T BGW320 integration."""
 
 from __future__ import annotations
 
@@ -14,15 +14,15 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .coordinator import BgwCoordinatorData, BgwProbeConfigEntry
-from .entity import BgwProbeEntity
+from .coordinator import BgwConfigEntry, BgwCoordinatorData
+from .entity import BgwEntity
 
 PARALLEL_UPDATES = 0
 
 
 @dataclass(frozen=True, kw_only=True)
 class BgwBinarySensorEntityDescription(BinarySensorEntityDescription):
-    """Describe a BGW320 Probe binary sensor."""
+    """Describe a AT&T BGW320 binary sensor."""
 
     value_fn: Callable[[BgwCoordinatorData], bool | None]
 
@@ -42,10 +42,10 @@ BINARY_SENSORS: tuple[BgwBinarySensorEntityDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: BgwProbeConfigEntry,
+    entry: BgwConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up BGW320 Probe binary sensors from a config entry."""
+    """Set up AT&T BGW320 binary sensors from a config entry."""
     coordinator = entry.runtime_data
     async_add_entities(
         BgwBinarySensorEntity(coordinator, description)
@@ -53,8 +53,8 @@ async def async_setup_entry(
     )
 
 
-class BgwBinarySensorEntity(BgwProbeEntity, BinarySensorEntity):
-    """Representation of a BGW320 Probe binary sensor."""
+class BgwBinarySensorEntity(BgwEntity, BinarySensorEntity):
+    """Representation of a AT&T BGW320 binary sensor."""
 
     entity_description: BgwBinarySensorEntityDescription
 

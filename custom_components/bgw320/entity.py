@@ -1,4 +1,4 @@
-"""Base entity for the BGW320 Probe integration."""
+"""Base entity for the AT&T BGW320 integration."""
 
 from __future__ import annotations
 
@@ -9,17 +9,17 @@ from homeassistant.helpers.entity import EntityDescription
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .coordinator import BgwProbeCoordinator
+from .coordinator import BgwCoordinator
 
 
-class BgwProbeEntity(CoordinatorEntity[BgwProbeCoordinator]):
-    """Base entity shared by BGW320 Probe platforms."""
+class BgwEntity(CoordinatorEntity[BgwCoordinator]):
+    """Base entity shared by AT&T BGW320 platforms."""
 
     _attr_has_entity_name = True
 
     def __init__(
         self,
-        coordinator: BgwProbeCoordinator,
+        coordinator: BgwCoordinator,
         description: EntityDescription,
     ) -> None:
         """Initialize the base entity and link it to the gateway DeviceInfo."""
