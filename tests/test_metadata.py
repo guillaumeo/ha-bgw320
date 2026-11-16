@@ -19,12 +19,17 @@ def test_manifest_and_hacs_metadata() -> None:
     hacs = json.loads((ROOT / "hacs.json").read_text(encoding="utf-8"))
 
     assert manifest["domain"] == DOMAIN
+    assert manifest["categories"] == ["computers_network.routers_network"]
     assert manifest["config_flow"] is True
     assert manifest["iot_class"] == "local_polling"
     assert manifest["integration_type"] == "device"
     assert manifest["requirements"] == []
     assert "version" in manifest
     assert hacs["name"] == manifest["name"]
+
+    keys = list(manifest.keys())
+    assert keys[:2] == ["domain", "name"]
+    assert keys[2:] == sorted(keys[2:])
 
 
 def test_translations_and_icons_cover_all_entities() -> None:

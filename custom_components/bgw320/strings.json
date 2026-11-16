@@ -2,8 +2,8 @@
   "config": {
     "step": {
       "user": {
-        "title": "Connect to AT&T BGW Gateway",
-        "description": "Enter the root URL of your AT&T BGW210 or BGW320 gateway.",
+        "title": "Connect to AT&T BGW320 Gateway",
+        "description": "Enter the root URL of your AT&T BGW320 gateway.",
         "data": {
           "url": "Gateway URL",
           "verify_ssl": "Verify SSL certificate"
