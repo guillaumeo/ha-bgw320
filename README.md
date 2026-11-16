@@ -4,7 +4,7 @@
   <img src="custom_components/bgw320/brand/icon@2x.png" alt="AT&T BGW320 Logo" width="128" height="128">
 </p>
 
-Native Home Assistant custom integration for read-only monitoring of **AT&T BGW210 and BGW320** gateways, inspired by [CCOSTAN/bgw-probe](https://github.com/CCOSTAN/bgw-probe).
+Native Home Assistant custom integration for read-only monitoring of **AT&T BGW320** gateways, inspired by [CCOSTAN/bgw-probe](https://github.com/CCOSTAN/bgw-probe).
 
 Polls the gateway's unauthenticated status pages (`/cgi-bin/sysinfo.ha`, `/cgi-bin/broadbandstatistics.ha`, and `/cgi-bin/firewall.ha`) directly over Home Assistant's managed `aiohttp` client session—**no external Docker container or third-party PyPI dependency required**.
 
