@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from html import unescape
 from html.parser import HTMLParser
@@ -26,6 +27,12 @@ _MAC_RE = re.compile(
     r"|^[0-9a-fA-F]{12}$"
 )
 _INVALID_MACS: frozenset[str] = frozenset({"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"})
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+_DURATION_RE = re.compile(
+    r"^(?:(\d+)\s*(?:days?|d)?[\s,:]+)?(\d+):(\d{1,2}):(\d{1,2})$",
+    re.IGNORECASE,
+)
+_IGNORED_TAGS: frozenset[str] = frozenset({"script", "style"})
 
 
 class BgwError(Exception):
@@ -113,35 +120,80 @@ def _clean_cell_text(value: str) -> str:
     return " ".join(unescape(value).replace("\xa0", " ").split())
 
 
+def _normalize_label(label: str) -> str:
+    """Normalize a table label for case- and punctuation-insensitive lookup."""
+    return _NON_ALNUM_RE.sub(" ", label.lower()).strip()
+
+
+def _build_label_index(rows: Mapping[str, str]) -> dict[str, str]:
+    """Build a normalized first-seen label map from parsed HTML rows."""
+    index: dict[str, str] = {}
+    for label, value in rows.items():
+        key = _normalize_label(label)
+        if key and key not in index:
+            index[key] = value
+    return index
+
+
+def _lookup(index: Mapping[str, str], *labels: str) -> str | None:
+    """Return the first matching label value from a normalized label index."""
+    for label in labels:
+        if (value := index.get(_normalize_label(label))) is not None:
+            return value
+    return None
+
+
 class _TableRowParser(HTMLParser):
-    """Extract two-column label/value rows from HTML tables."""
+    """Extract label/value rows across flat, nested, or unclosed-cell HTML tables."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.rows: list[list[str]] = []
-        self._row: list[str] | None = None
-        self._cell: list[str] | None = None
+        self._row_stack: list[list[str]] = []
+        self._cell_stack: list[list[str]] = []
+        self._in_ignored_tag = False
+
+    def _close_active_cell(self) -> None:
+        """Close the active cell for the current table row."""
+        cell = self._cell_stack.pop()
+        self._row_stack[-1].append(_clean_cell_text("".join(cell)))
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in _IGNORED_TAGS:
+            self._in_ignored_tag = True
+            return
         if tag == "tr":
-            self._row = []
-        elif tag in {"td", "th"} and self._row is not None:
-            self._cell = []
+            self._row_stack.append([])
+        elif tag in {"td", "th"} and self._row_stack:
+            if len(self._cell_stack) == len(self._row_stack):
+                self._close_active_cell()
+            self._cell_stack.append([])
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag not in _IGNORED_TAGS:
+            super().handle_startendtag(tag, attrs)
 
     def handle_data(self, data: str) -> None:
-        if self._cell is not None:
-            self._cell.append(data)
+        if (
+            not self._in_ignored_tag
+            and self._cell_stack
+            and len(self._cell_stack) == len(self._row_stack)
+        ):
+            self._cell_stack[-1].append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"td", "th"} and self._cell is not None:
-            if self._row is not None:
-                self._row.append(_clean_cell_text("".join(self._cell)))
-            self._cell = None
-        elif tag == "tr" and self._row is not None:
-            if len(self._row) >= 2:
-                self.rows.append(self._row)
-            self._row = None
-            self._cell = None
+        if tag in _IGNORED_TAGS:
+            self._in_ignored_tag = False
+            return
+        if tag in {"td", "th"}:
+            if self._cell_stack and len(self._cell_stack) == len(self._row_stack):
+                self._close_active_cell()
+        elif tag == "tr" and self._row_stack:
+            if len(self._cell_stack) == len(self._row_stack):
+                self._close_active_cell()
+            row = self._row_stack.pop()
+            if len(row) >= 2 and row[0]:
+                self.rows.append(row)
 
 
 def parse_label_value_rows(html: str) -> dict[str, str]:
@@ -149,11 +201,13 @@ def parse_label_value_rows(html: str) -> dict[str, str]:
     parser = _TableRowParser()
     parser.feed(html)
     values: dict[str, str] = {}
+    seen_normalized: set[str] = set()
     for row in parser.rows:
         label = row[0].strip().rstrip(":")
-        value = row[1].strip()
-        if label and label not in values:
-            values[label] = value
+        norm = _normalize_label(label)
+        if norm and norm not in seen_normalized:
+            seen_normalized.add(norm)
+            values[label] = row[1].strip()
     return values
 
 
@@ -214,19 +268,13 @@ def _int_counter(value: str | None) -> int | None:
 def _duration_seconds(value: str | None) -> int | None:
     if not value:
         return None
-    parts = value.strip().split(":")
-    if len(parts) not in {3, 4}:
+    match = _DURATION_RE.match(value.strip())
+    if not match:
         return None
-    try:
-        numbers = [int(part) for part in parts]
-    except ValueError:
-        return None
-    if len(numbers) == 3:
-        days = 0
-        hours, minutes, seconds = numbers
-    else:
-        days, hours, minutes, seconds = numbers
-    if min(numbers) < 0 or minutes > 59 or seconds > 59:
+    days_raw, hours_raw, minutes_raw, seconds_raw = match.groups()
+    days = int(days_raw) if days_raw else 0
+    hours, minutes, seconds = int(hours_raw), int(minutes_raw), int(seconds_raw)
+    if minutes > 59 or seconds > 59:
         return None
     return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
@@ -308,49 +356,76 @@ class BgwGatewayClient:
                     ) from exc
                 failures[page] = code
 
-        system = parsed["system"]
-        broadband = parsed["broadband"]
+        system = _build_label_index(parsed["system"])
+        broadband = _build_label_index(parsed["broadband"])
 
-        model = _text(system.get("Model Number"))
-        connection = _status(broadband.get("Broadband Connection"))
+        model = _text(_lookup(system, "Model Number", "Model", "Device Model"))
+        connection = _status(
+            _lookup(broadband, "Broadband Connection", "Connection Status")
+        )
         if not model or not connection:
             raise BgwParseError("Gateway response missing model or broadband state")
 
         gateway_info = GatewayInfo(
             model=model,
-            manufacturer=_text(system.get("Manufacturer")),
-            firmware=_text(system.get("Software Version")),
-            uptime_seconds=_duration_seconds(system.get("Time Since Last Reboot")),
-            mac_address=_mac_address(system.get("MAC Address")),
-            serial_number=_text(system.get("Serial Number")),
+            manufacturer=_text(_lookup(system, "Manufacturer", "Vendor")),
+            firmware=_text(
+                _lookup(system, "Software Version", "Firmware Version", "Firmware")
+            ),
+            uptime_seconds=_duration_seconds(
+                _lookup(system, "Time Since Last Reboot", "System Uptime", "Uptime")
+            ),
+            mac_address=_mac_address(_lookup(system, "MAC Address", "Device MAC")),
+            serial_number=_text(_lookup(system, "Serial Number", "Serial")),
         )
 
         broadband_info = BroadbandInfo(
             connection=connection,
-            network_type=_text(broadband.get("Broadband Network Type")),
-            line_state=_status(broadband.get("Line State")),
-            speed_mbps=_number(broadband.get("Current Speed (Mbps)")),
-            duplex=_status(broadband.get("Current Duplex")),
-            rx_packets=_int_counter(broadband.get("Receive Packets")),
-            tx_packets=_int_counter(broadband.get("Transmit Packets")),
-            rx_bytes=_int_counter(broadband.get("Receive Bytes")),
-            tx_bytes=_int_counter(broadband.get("Transmit Bytes")),
-            rx_drops=_int_counter(broadband.get("Receive Drops")),
-            tx_drops=_int_counter(broadband.get("Transmit Drops")),
-            rx_errors=_int_counter(broadband.get("Receive Errors")),
-            tx_errors=_int_counter(broadband.get("Transmit Errors")),
-            collisions=_int_counter(broadband.get("Collisions")),
-            tx_discards=_int_counter(broadband.get("Transmit Discards")),
+            network_type=_text(
+                _lookup(broadband, "Broadband Network Type", "Network Type")
+            ),
+            line_state=_status(_lookup(broadband, "Line State", "PON Link Status")),
+            speed_mbps=_number(
+                _lookup(
+                    broadband,
+                    "Current Speed (Mbps)",
+                    "Current Speed",
+                    "Negotiated Speed (Mbps)",
+                )
+            ),
+            duplex=_status(_lookup(broadband, "Current Duplex", "Duplex")),
+            rx_packets=_int_counter(
+                _lookup(broadband, "Receive Packets", "Received Packets", "RX Packets")
+            ),
+            tx_packets=_int_counter(
+                _lookup(
+                    broadband, "Transmit Packets", "Transmitted Packets", "TX Packets"
+                )
+            ),
+            rx_bytes=_int_counter(
+                _lookup(broadband, "Receive Bytes", "Received Bytes", "RX Bytes")
+            ),
+            tx_bytes=_int_counter(
+                _lookup(broadband, "Transmit Bytes", "Transmitted Bytes", "TX Bytes")
+            ),
+            rx_drops=_int_counter(_lookup(broadband, "Receive Drops", "RX Drops")),
+            tx_drops=_int_counter(_lookup(broadband, "Transmit Drops", "TX Drops")),
+            rx_errors=_int_counter(_lookup(broadband, "Receive Errors", "RX Errors")),
+            tx_errors=_int_counter(_lookup(broadband, "Transmit Errors", "TX Errors")),
+            collisions=_int_counter(_lookup(broadband, "Collisions")),
+            tx_discards=_int_counter(
+                _lookup(broadband, "Transmit Discards", "TX Discards")
+            ),
         )
 
         firewall_info: FirewallInfo | None = None
         if "firewall" in parsed:
-            fw = parsed["firewall"]
+            fw = _build_label_index(parsed["firewall"])
             firewall_info = FirewallInfo(
-                packet_filter=_status(fw.get("Packet Filter")),
-                ip_passthrough=_status(fw.get("IP Passthrough")),
-                nat_default_server=_status(fw.get("NAT Default Server")),
-                advanced=_status(fw.get("Firewall Advanced")),
+                packet_filter=_status(_lookup(fw, "Packet Filter")),
+                ip_passthrough=_status(_lookup(fw, "IP Passthrough")),
+                nat_default_server=_status(_lookup(fw, "NAT Default Server")),
+                advanced=_status(_lookup(fw, "Firewall Advanced", "Advanced")),
             )
 
         return BgwSnapshot(
