@@ -87,14 +87,115 @@ def test_parse_helpers_and_mac_validation() -> None:
 
 
 def test_duration_seconds() -> None:
-    """Test uptime string parsing across 3-part and 4-part formats."""
+    """Test uptime string parsing across 3-part, 4-part, and word-day formats."""
     assert _duration_seconds("01:02:03") == 3723
     assert _duration_seconds("02:03:04:05") == 183845
+    assert _duration_seconds("2 days, 03:04:05") == 183845
+    assert _duration_seconds("2d 03:04:05") == 183845
     assert _duration_seconds("00:60:00") is None
     assert _duration_seconds("-1:00:00") is None
     assert _duration_seconds("01:xx:00") is None
     assert _duration_seconds("invalid") is None
     assert _duration_seconds(None) is None
+
+
+def test_parser_resilience_scripts_nested_tables_and_unclosed_cells() -> None:
+    """Test parser survives inline scripts/styles, nested layout tables, and unclosed cells."""
+    html = """
+    <div class="wrapper">
+      <td>stray-cell-outside-tr</td></td></tr>
+      <table class="layout-shell">
+        <tr>
+          <td>
+            <style>.hidden { display: none; }</style>
+            <table class="inner-stats">
+              <tr>
+                <th>Model Number<script><span>ignored()</span></script>:</th>
+                <td>
+                  <script type="text/javascript">var secret = "ignore_me";</script>
+                  <script src="/noop.js" />
+                  <br/>
+                  <span>BGW320-500</span>
+                </td>
+              </tr>
+              <tr><th>MODEL_NUMBER<td>Ignored Case-Insensitive Duplicate</tr>
+              <tr><th>Current Speed<td>10,000 Mbps</tr>
+              <tr><td></td><td>EmptyLabelIgnored</td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+    """
+    rows = parse_label_value_rows(html)
+    assert rows == {
+        "Model Number": "BGW320-500",
+        "Current Speed": "10,000 Mbps",
+    }
+
+
+async def test_client_survives_label_case_punctuation_and_alias_drift(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    """Test snapshot collection survives firmware label casing, punctuation, and alias changes."""
+    base = "https://192.168.1.254"
+    drifted_system = """
+    <table><tr><td>
+      <table>
+        <tr><th>Device Model</th><td>BGW320-500</td></tr>
+        <tr><th>vendor:</th><td>HUMAX</td></tr>
+        <tr><th>Firmware Version</th><td>6.40.4</td></tr>
+        <tr><th>System Uptime</th><td>3 days, 01:02:03</td></tr>
+        <tr><th>device_mac</th><td>BC-9A-8E-BF-3F-80</td></tr>
+      </table>
+    </td></tr></table>
+    """
+    drifted_broadband = """
+    <table>
+      <tr><th>connection_status<td>UP</tr>
+      <tr><th>Network Type<td>XGS-PON</tr>
+      <tr><th>PON Link Status<td>Up</tr>
+      <tr><th>Current_Speed<td>10,000 Mbps</tr>
+      <tr><th>Duplex<td>Full</tr>
+      <tr><th>RX Bytes<td>1000</tr>
+      <tr><th>TX Bytes<td>2000</tr>
+      <tr><th>RX Packets<td>10</tr>
+      <tr><th>TX Packets<td>20</tr>
+    </table>
+    """
+    drifted_firewall = """
+    <table>
+      <tr><td>ip-passthrough</td><td>ON</td></tr>
+      <tr><td>Advanced</td><td>off</td></tr>
+    </table>
+    """
+    aioclient_mock.get(f"{base}/cgi-bin/sysinfo.ha", text=drifted_system)
+    aioclient_mock.get(f"{base}/cgi-bin/broadbandstatistics.ha", text=drifted_broadband)
+    aioclient_mock.get(f"{base}/cgi-bin/firewall.ha", text=drifted_firewall)
+
+    session = async_get_clientsession(hass, verify_ssl=False)
+    client = BgwGatewayClient(base, session=session)
+    snapshot = await client.async_collect()
+
+    assert snapshot.gateway.model == "BGW320-500"
+    assert snapshot.gateway.manufacturer == "HUMAX"
+    assert snapshot.gateway.firmware == "6.40.4"
+    assert snapshot.gateway.uptime_seconds == 262923
+    assert snapshot.gateway.mac_address == "bc:9a:8e:bf:3f:80"
+    assert snapshot.broadband.connection == "up"
+    assert snapshot.broadband.network_type == "XGS-PON"
+    assert snapshot.broadband.line_state == "up"
+    assert snapshot.broadband.speed_mbps == 10000
+    assert snapshot.broadband.duplex == "full"
+    assert snapshot.broadband.rx_bytes == 1000
+    assert snapshot.broadband.tx_bytes == 2000
+    assert snapshot.broadband.rx_packets == 10
+    assert snapshot.broadband.tx_packets == 20
+    assert snapshot.broadband.rx_errors is None
+    assert snapshot.firewall is not None
+    assert snapshot.firewall.ip_passthrough == "on"
+    assert snapshot.firewall.advanced == "off"
+    assert snapshot.firewall.packet_filter is None
 
 
 async def test_client_collect_full_snapshot(
