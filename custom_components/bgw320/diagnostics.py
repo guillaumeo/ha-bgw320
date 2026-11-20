@@ -11,12 +11,14 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import BgwConfigEntry
 
-TO_REDACT: set[str] = {
-    CONF_URL,
-    "mac_address",
-    "serial_number",
-    "unique_id",
-}
+TO_REDACT: frozenset[str] = frozenset(
+    {
+        CONF_URL,
+        "mac_address",
+        "serial_number",
+        "unique_id",
+    }
+)
 
 
 async def async_get_config_entry_diagnostics(
@@ -31,7 +33,11 @@ async def async_get_config_entry_diagnostics(
             "data": dict(entry.data),
             "unique_id": entry.unique_id,
         },
-        "snapshot": asdict(data.snapshot),
-        "last_reboot": data.last_reboot.isoformat() if data.last_reboot else None,
+        "snapshot": asdict(data.snapshot) if data is not None else None,
+        "last_reboot": (
+            data.last_reboot.isoformat()
+            if data is not None and data.last_reboot is not None
+            else None
+        ),
     }
     return async_redact_data(payload, TO_REDACT)

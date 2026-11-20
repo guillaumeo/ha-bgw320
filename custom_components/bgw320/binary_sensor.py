@@ -62,4 +62,6 @@ class BgwBinarySensorEntity(BgwEntity, BinarySensorEntity):
     @override
     def is_on(self) -> bool | None:
         """Return true if the binary sensor is on."""
-        return self.entity_description.value_fn(self.coordinator.data)
+        if (data := self.coordinator.data) is None:
+            return None
+        return self.entity_description.value_fn(data)

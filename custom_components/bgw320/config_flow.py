@@ -69,15 +69,16 @@ class BgwConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle a flow initialized by the user."""
         errors: dict[str, str] = {}
-        default_url = DEFAULT_URL
-        default_verify_ssl = DEFAULT_VERIFY_SSL
-
-        if self.source == SOURCE_RECONFIGURE:
-            reconfigure_entry = self._get_reconfigure_entry()
-            default_url = reconfigure_entry.data.get(CONF_URL, DEFAULT_URL)
-            default_verify_ssl = reconfigure_entry.data.get(
-                CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL
-            )
+        reconfigure_entry = (
+            self._get_reconfigure_entry()
+            if self.source == SOURCE_RECONFIGURE
+            else None
+        )
+        defaults: Mapping[str, Any] = (
+            reconfigure_entry.data if reconfigure_entry is not None else {}
+        )
+        default_url = str(defaults.get(CONF_URL, DEFAULT_URL))
+        default_verify_ssl = bool(defaults.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL))
 
         if user_input is not None:
             default_url = str(user_input.get(CONF_URL, default_url))
@@ -98,33 +99,27 @@ class BgwConfigFlow(ConfigFlow, domain=DOMAIN):
                 LOGGER.exception("Unexpected error validating BGW gateway")
                 errors["base"] = "unknown"
             else:
-                unique_id = _derive_unique_id(snapshot, normalized_url)
-                await self.async_set_unique_id(unique_id, raise_on_progress=False)
+                await self.async_set_unique_id(
+                    _derive_unique_id(snapshot, normalized_url),
+                    raise_on_progress=False,
+                )
+                entry_data = {CONF_URL: normalized_url, CONF_VERIFY_SSL: verify_ssl}
 
-                if self.source == SOURCE_RECONFIGURE:
-                    reconfigure_entry = self._get_reconfigure_entry()
-                    if reconfigure_entry.unique_id is not None:
-                        self._abort_if_unique_id_mismatch(reason="unique_id_mismatch")
+                if reconfigure_entry is not None and reconfigure_entry.unique_id is not None:
+                    self._abort_if_unique_id_mismatch(reason="unique_id_mismatch")
+                else:
+                    self._abort_if_unique_id_configured()
+
+                if reconfigure_entry is not None:
                     return self.async_update_reload_and_abort(
-                        reconfigure_entry,
-                        data_updates={
-                            CONF_URL: normalized_url,
-                            CONF_VERIFY_SSL: verify_ssl,
-                        },
+                        reconfigure_entry, data_updates=entry_data
                     )
-
-                self._abort_if_unique_id_configured()
                 return self.async_create_entry(
-                    title=snapshot.gateway.model,
-                    data={
-                        CONF_URL: normalized_url,
-                        CONF_VERIFY_SSL: verify_ssl,
-                    },
+                    title=snapshot.gateway.model, data=entry_data
                 )
 
-        step_id = "reconfigure" if self.source == SOURCE_RECONFIGURE else "user"
         return self.async_show_form(
-            step_id=step_id,
+            step_id="reconfigure" if reconfigure_entry is not None else "user",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_URL, default=default_url): str,

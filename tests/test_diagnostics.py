@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from conftest import BROADBAND_HTML, FIREWALL_HTML, SYSTEM_HTML
+from conftest import register_gateway_pages
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.const import CONF_URL, CONF_VERIFY_SSL
 from homeassistant.core import HomeAssistant
@@ -23,9 +23,7 @@ async def test_diagnostics_redacts_identifiers_and_url(
 ) -> None:
     """Verify URL, MAC, serial, and unique_id are redacted in diagnostics output."""
     base = "https://192.168.1.254"
-    aioclient_mock.get(f"{base}/cgi-bin/sysinfo.ha", text=SYSTEM_HTML)
-    aioclient_mock.get(f"{base}/cgi-bin/broadbandstatistics.ha", text=BROADBAND_HTML)
-    aioclient_mock.get(f"{base}/cgi-bin/firewall.ha", text=FIREWALL_HTML)
+    register_gateway_pages(aioclient_mock, base=base)
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -52,3 +50,8 @@ async def test_diagnostics_redacts_identifiers_and_url(
     assert "SECRET-SERIAL-999" not in rendered
     assert "192.168.1.254" not in rendered
     assert "203.0.113.42" not in rendered
+
+    entry.runtime_data.data = None
+    empty_diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert empty_diag["snapshot"] is None
+    assert empty_diag["last_reboot"] is None

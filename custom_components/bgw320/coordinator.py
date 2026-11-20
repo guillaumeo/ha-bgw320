@@ -42,13 +42,14 @@ class BgwCoordinator(DataUpdateCoordinator[BgwCoordinatorData]):
             hass,
             logger=LOGGER,
             config_entry=config_entry,
-            name=f"{DOMAIN}_{client.base_url}",
+            name=DOMAIN,
             update_interval=DEFAULT_SCAN_INTERVAL,
         )
         self.client = client
         self.device_identifier: str = config_entry.unique_id or config_entry.entry_id
         self._last_reboot: datetime | None = None
-        self._current_firmware: str | None = None
+        self._last_uptime: int | None = None
+        self._last_firmware: str | None = None
         self._firewall_degraded_logged = False
 
     def _resolve_last_reboot(self, uptime_seconds: int | None) -> datetime | None:
@@ -60,10 +61,11 @@ class BgwCoordinator(DataUpdateCoordinator[BgwCoordinatorData]):
         )
         if (
             self._last_reboot is None
-            or abs((candidate - self._last_reboot).total_seconds())
-            > BOOT_TIME_DRIFT_TOLERANCE.total_seconds()
+            or (self._last_uptime is not None and uptime_seconds < self._last_uptime)
+            or abs(candidate - self._last_reboot) > BOOT_TIME_DRIFT_TOLERANCE
         ):
             self._last_reboot = candidate
+        self._last_uptime = uptime_seconds
         return self._last_reboot
 
     @override
@@ -82,35 +84,29 @@ class BgwCoordinator(DataUpdateCoordinator[BgwCoordinatorData]):
                 translation_key="invalid_response",
             ) from err
 
-        if "firewall" in snapshot.failed_pages:
+        if fw_err := snapshot.failed_pages.get("firewall"):
             if not self._firewall_degraded_logged:
                 LOGGER.warning(
                     "BGW firewall status page unavailable (%s); continuing with degraded snapshot",
-                    snapshot.failed_pages["firewall"],
+                    fw_err,
                 )
                 self._firewall_degraded_logged = True
         elif self._firewall_degraded_logged:
             LOGGER.info("BGW firewall status page recovered")
             self._firewall_degraded_logged = False
 
-        firmware = snapshot.gateway.firmware
-        if self._current_firmware is not None and firmware != self._current_firmware:
-            device_registry = dr.async_get(self.hass)
-            if hasattr(device_registry, "async_get_device_by_identifier"):
-                device_entry = device_registry.async_get_device_by_identifier(
-                    (DOMAIN, self.device_identifier),
-                    self.config_entry.entry_id,
+        if firmware := snapshot.gateway.firmware:
+            if self.data is not None and firmware != self._last_firmware:
+                reg = dr.async_get(self.hass)
+                ident = (DOMAIN, self.device_identifier)
+                device = (
+                    reg.async_get_device_by_identifier(ident, self.config_entry.entry_id)
+                    if hasattr(reg, "async_get_device_by_identifier")
+                    else reg.async_get_device(identifiers={ident})
                 )
-            else:  # pragma: no cover - compatibility with pre-2026 HA releases
-                device_entry = device_registry.async_get_device(
-                    identifiers={(DOMAIN, self.device_identifier)}
-                )
-            if device_entry is not None:
-                device_registry.async_update_device(
-                    device_entry.id,
-                    sw_version=firmware,
-                )
-        self._current_firmware = firmware
+                if device is not None:
+                    reg.async_update_device(device.id, sw_version=firmware)
+            self._last_firmware = firmware
 
         return BgwCoordinatorData(
             snapshot=snapshot,
