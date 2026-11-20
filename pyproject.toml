@@ -1,6 +1,6 @@
 [project]
 name = "ha-bgw320"
-version = "0.2.2"
+version = "0.2.3"
 description = "Home Assistant custom integration for read-only AT&T BGW320 gateway telemetry"
 readme = "README.md"
 requires-python = ">=3.12"

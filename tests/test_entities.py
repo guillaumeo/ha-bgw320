@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from conftest import BROADBAND_HTML, FIREWALL_HTML, SYSTEM_HTML
+from conftest import BROADBAND_HTML, FIREWALL_HTML, SYSTEM_HTML, register_gateway_pages
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import (
     CONF_URL,
@@ -19,6 +19,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
+from custom_components.bgw320.api import PAGE_PATHS
 from custom_components.bgw320.const import DEFAULT_SCAN_INTERVAL, DOMAIN
 
 try:
@@ -30,22 +31,6 @@ except ModuleNotFoundError:
     from tests.common import MockConfigEntry, async_fire_time_changed
 
 
-def _register_pages(
-    aioclient_mock,
-    base: str = "https://192.168.1.254",
-    system_html: str = SYSTEM_HTML,
-    broadband_html: str = BROADBAND_HTML,
-    firewall_html: str | None = FIREWALL_HTML,
-) -> None:
-    aioclient_mock.clear_requests()
-    aioclient_mock.get(f"{base}/cgi-bin/sysinfo.ha", text=system_html)
-    aioclient_mock.get(f"{base}/cgi-bin/broadbandstatistics.ha", text=broadband_html)
-    if firewall_html is None:
-        aioclient_mock.get(f"{base}/cgi-bin/firewall.ha", status=503)
-    else:
-        aioclient_mock.get(f"{base}/cgi-bin/firewall.ha", text=firewall_html)
-
-
 async def test_setup_entities_device_and_unload(
     hass: HomeAssistant,
     aioclient_mock,
@@ -53,7 +38,7 @@ async def test_setup_entities_device_and_unload(
     entity_registry: er.EntityRegistry,
 ) -> None:
     """Test primary entities, disabled diagnostic entities, device MAC link, and unload."""
-    _register_pages(aioclient_mock)
+    register_gateway_pages(aioclient_mock)
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -125,7 +110,7 @@ async def test_setup_entities_device_and_unload(
     # Test last_reboot drift stabilization (uptime advances ~61s over a 60s poll)
     drifted_system = SYSTEM_HTML.replace("02:03:04:05", "02:03:05:06")
     upgraded_system = drifted_system.replace("6.28.7", "6.30.1")
-    _register_pages(aioclient_mock, system_html=upgraded_system)
+    register_gateway_pages(aioclient_mock, system_html=upgraded_system)
 
     async_fire_time_changed(hass, dt_util.utcnow() + DEFAULT_SCAN_INTERVAL)
     await hass.async_block_till_done()
@@ -143,7 +128,7 @@ async def test_setup_entities_device_and_unload(
         "<tr><td>Broadband Connection</td><td>Up</td></tr>",
         "<tr><td>Broadband Connection</td><td>Down</td></tr>",
     )
-    _register_pages(
+    register_gateway_pages(
         aioclient_mock, system_html=rebooted_system, broadband_html=down_broadband
     )
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=2))
@@ -167,7 +152,7 @@ async def test_enabled_diagnostic_entities_and_partial_firewall_degradation(
     entity_registry: er.EntityRegistry,
 ) -> None:
     """Test enabling diagnostic sensors and marking only firewall sensors unavailable on 503."""
-    _register_pages(aioclient_mock)
+    register_gateway_pages(aioclient_mock)
 
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -186,7 +171,7 @@ async def test_enabled_diagnostic_entities_and_partial_firewall_degradation(
     ):
         entity_registry.async_update_entity(entity_id, disabled_by=None)
 
-    _register_pages(aioclient_mock)
+    register_gateway_pages(aioclient_mock)
     await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
 
@@ -194,7 +179,7 @@ async def test_enabled_diagnostic_entities_and_partial_firewall_degradation(
     assert hass.states.get("sensor.bgw320_505_broadband_network_type").state == "PON"
 
     # Firewall page fails -> firewall sensor becomes unavailable while broadband stays live
-    _register_pages(aioclient_mock, firewall_html=None)
+    register_gateway_pages(aioclient_mock, firewall_html=None)
     async_fire_time_changed(hass, dt_util.utcnow() + DEFAULT_SCAN_INTERVAL)
     await hass.async_block_till_done()
 
@@ -214,7 +199,7 @@ async def test_enabled_diagnostic_entities_and_partial_firewall_degradation(
     sparse_broadband = BROADBAND_HTML.replace(
         "<tr><td>Receive Drops</td><td>3</td></tr>", ""
     )
-    _register_pages(
+    register_gateway_pages(
         aioclient_mock,
         system_html=sparse_system,
         broadband_html=sparse_broadband,
@@ -226,14 +211,7 @@ async def test_enabled_diagnostic_entities_and_partial_firewall_degradation(
     assert hass.states.get("sensor.bgw320_505_last_reboot").state == "unknown"
 
     # Unparseable HTML during poll -> marks entities unavailable via UpdateFailed
-    aioclient_mock.clear_requests()
-    aioclient_mock.get(
-        "https://192.168.1.254/cgi-bin/sysinfo.ha", text="<html>broken</html>"
-    )
-    aioclient_mock.get(
-        "https://192.168.1.254/cgi-bin/broadbandstatistics.ha", text=BROADBAND_HTML
-    )
-    aioclient_mock.get("https://192.168.1.254/cgi-bin/firewall.ha", text=FIREWALL_HTML)
+    register_gateway_pages(aioclient_mock, system_html="<html>broken</html>")
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=3))
     await hass.async_block_till_done()
     assert (
@@ -242,18 +220,10 @@ async def test_enabled_diagnostic_entities_and_partial_firewall_degradation(
 
     # Full gateway outage -> all entities stay unavailable
     aioclient_mock.clear_requests()
-    aioclient_mock.get("https://192.168.1.254/cgi-bin/sysinfo.ha", exc=TimeoutError())
-    aioclient_mock.get(
-        "https://192.168.1.254/cgi-bin/broadbandstatistics.ha", exc=TimeoutError()
-    )
-    aioclient_mock.get("https://192.168.1.254/cgi-bin/firewall.ha", exc=TimeoutError())
+    for path in PAGE_PATHS.values():
+        aioclient_mock.get(f"https://192.168.1.254{path}", exc=TimeoutError())
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(minutes=4))
     await hass.async_block_till_done()
 
-    assert (
-        hass.states.get("binary_sensor.bgw320_505_broadband_connection").state
-        == STATE_UNAVAILABLE
-    )
-    assert (
-        hass.states.get("sensor.bgw320_505_negotiated_speed").state == STATE_UNAVAILABLE
-    )
+    assert hass.states.get("binary_sensor.bgw320_505_broadband_connection").state == STATE_UNAVAILABLE
+    assert hass.states.get("sensor.bgw320_505_negotiated_speed").state == STATE_UNAVAILABLE

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from collections.abc import Generator
+from typing import Any
 
 import pytest
 
@@ -61,3 +62,23 @@ def auto_enable_custom_integrations(
 ) -> Generator[None]:
     """Automatically enable custom integrations in all tests."""
     yield
+
+
+def register_gateway_pages(
+    aioclient_mock: Any,
+    base: str = "https://192.168.1.254",
+    system_html: str = SYSTEM_HTML,
+    broadband_html: str = BROADBAND_HTML,
+    firewall_html: str | None = FIREWALL_HTML,
+    *,
+    clear: bool = True,
+) -> None:
+    """Register mocked gateway HTML status pages."""
+    if clear:
+        aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{base}/cgi-bin/sysinfo.ha", text=system_html)
+    aioclient_mock.get(f"{base}/cgi-bin/broadbandstatistics.ha", text=broadband_html)
+    if firewall_html is None:
+        aioclient_mock.get(f"{base}/cgi-bin/firewall.ha", status=503)
+    else:
+        aioclient_mock.get(f"{base}/cgi-bin/firewall.ha", text=firewall_html)

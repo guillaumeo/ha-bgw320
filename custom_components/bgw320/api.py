@@ -6,7 +6,6 @@ import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
@@ -17,14 +16,19 @@ PAGE_PATHS: dict[str, str] = {
     "broadband": "/cgi-bin/broadbandstatistics.ha",
     "firewall": "/cgi-bin/firewall.ha",
 }
-REQUIRED_PAGES: frozenset[str] = frozenset({"system", "broadband"})
+REQUIRED_PAGE_LABELS: dict[str, tuple[str, ...]] = {
+    "system": ("Model Number", "Model", "Device Model"),
+    "broadband": ("Broadband Connection", "Connection Status"),
+}
 
 MAX_RESPONSE_BYTES = 1_000_000
+MAX_UPTIME_SECONDS = 3_153_600_000
 USER_AGENT = "ha-bgw320/0.2"
+_HEADERS: dict[str, str] = {"User-Agent": USER_AGENT}
 
 _MAC_RE = re.compile(
-    r"^(?:[0-9a-fA-F]{2}([-:]))(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}$"
-    r"|^[0-9a-fA-F]{12}$"
+    r"(?:[0-9a-fA-F]{2}([-:]))(?:[0-9a-fA-F]{2}\1){4}[0-9a-fA-F]{2}"
+    r"|[0-9a-fA-F]{12}"
 )
 _INVALID_MACS: frozenset[str] = frozenset({"00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"})
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
@@ -106,18 +110,24 @@ class BgwSnapshot:
 
 def normalize_gateway_url(raw_url: str) -> str:
     """Validate and normalize the gateway root URL."""
-    candidate = raw_url.strip().rstrip("/")
-    parsed = urlparse(candidate)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise BgwInvalidUrlError("Gateway URL must use http:// or https:// with a host")
-    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
-        raise BgwInvalidUrlError("Gateway URL must be a root URL without path or query")
-    return candidate
-
-
-def _clean_cell_text(value: str) -> str:
-    """Normalize HTML cell text."""
-    return " ".join(unescape(value).replace("\xa0", " ").split())
+    try:
+        parsed = urlparse(raw_url.strip().rstrip("/"))
+        port = parsed.port
+    except ValueError as err:
+        raise BgwInvalidUrlError("Invalid gateway URL") from err
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or any(ch.isspace() or ord(ch) < 32 or ch in "@;" for ch in parsed.netloc)
+        or parsed.netloc.endswith(":")
+        or parsed.path not in {"", "/"}
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+        or (port is not None and not 1 <= port <= 65535)
+    ):
+        raise BgwInvalidUrlError("Gateway URL must be a root http:// or https:// URL")
+    return f"{parsed.scheme}://{parsed.netloc}"
 
 
 def _normalize_label(label: str) -> str:
@@ -143,90 +153,112 @@ def _lookup(index: Mapping[str, str], *labels: str) -> str | None:
     return None
 
 
+@dataclass(slots=True)
+class _TableScope:
+    """Active row and cell buffers for a single HTML table level."""
+
+    row: list[str] | None = None
+    cell: list[str] | None = None
+
+
 class _TableRowParser(HTMLParser):
     """Extract label/value rows across flat, nested, or unclosed-cell HTML tables."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.rows: list[list[str]] = []
-        self._row_stack: list[list[str]] = []
-        self._cell_stack: list[list[str]] = []
-        self._in_ignored_tag = False
+        self._scopes: list[_TableScope] = [_TableScope()]
+        self._skip = 0
 
-    def _close_active_cell(self) -> None:
-        """Close the active cell for the current table row."""
-        cell = self._cell_stack.pop()
-        self._row_stack[-1].append(_clean_cell_text("".join(cell)))
+    def _flush_cell(self) -> None:
+        scope = self._scopes[-1]
+        if scope.cell is not None and scope.row is not None and len(scope.row) < 2:
+            scope.row.append(" ".join("".join(scope.cell).split()))
+        scope.cell = None
+
+    def _flush_row(self) -> None:
+        self._flush_cell()
+        scope = self._scopes[-1]
+        if scope.row is not None and len(scope.row) >= 2 and scope.row[0]:
+            self.rows.append(scope.row)
+        scope.row = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag in _IGNORED_TAGS:
-            self._in_ignored_tag = True
+            self._skip += 1
+        elif self._skip:
             return
-        if tag == "tr":
-            self._row_stack.append([])
-        elif tag in {"td", "th"} and self._row_stack:
-            if len(self._cell_stack) == len(self._row_stack):
-                self._close_active_cell()
-            self._cell_stack.append([])
+        elif tag == "table":
+            self._scopes.append(_TableScope())
+        elif tag == "tr":
+            self._flush_row()
+            self._scopes[-1].row = []
+        elif tag in {"td", "th"} and self._scopes[-1].row is not None:
+            self._flush_cell()
+            if len(self._scopes[-1].row) < 2:
+                self._scopes[-1].cell = []
+        elif tag == "br" and self._scopes[-1].cell is not None:
+            self._scopes[-1].cell.append(" ")
 
-    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+    def handle_startendtag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
         if tag not in _IGNORED_TAGS:
             super().handle_startendtag(tag, attrs)
 
     def handle_data(self, data: str) -> None:
-        if (
-            not self._in_ignored_tag
-            and self._cell_stack
-            and len(self._cell_stack) == len(self._row_stack)
-        ):
-            self._cell_stack[-1].append(data)
+        if not self._skip and self._scopes[-1].cell is not None:
+            self._scopes[-1].cell.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in _IGNORED_TAGS:
-            self._in_ignored_tag = False
+        if tag in _IGNORED_TAGS and self._skip:
+            self._skip -= 1
+        elif self._skip:
             return
-        if tag in {"td", "th"}:
-            if self._cell_stack and len(self._cell_stack) == len(self._row_stack):
-                self._close_active_cell()
-        elif tag == "tr" and self._row_stack:
-            if len(self._cell_stack) == len(self._row_stack):
-                self._close_active_cell()
-            row = self._row_stack.pop()
-            if len(row) >= 2 and row[0]:
-                self.rows.append(row)
+        elif tag in {"td", "th"}:
+            self._flush_cell()
+        elif tag in {"tr", "tbody", "thead", "tfoot"}:
+            self._flush_row()
+        elif tag == "table":
+            self._flush_row()
+            if len(self._scopes) > 1:
+                self._scopes.pop()
+
+    def close(self) -> None:
+        super().close()
+        while self._scopes:
+            self._flush_row()
+            self._scopes.pop()
 
 
 def parse_label_value_rows(html: str) -> dict[str, str]:
     """Parse HTML table rows into a first-seen label -> value mapping."""
     parser = _TableRowParser()
     parser.feed(html)
+    parser.close()
     values: dict[str, str] = {}
     seen_normalized: set[str] = set()
     for row in parser.rows:
-        label = row[0].strip().rstrip(":")
+        label = row[0].rstrip(": ")
         norm = _normalize_label(label)
         if norm and norm not in seen_normalized:
             seen_normalized.add(norm)
-            values[label] = row[1].strip()
+            values[label] = row[1]
     return values
 
 
 def _text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    cleaned = " ".join(value.split())[:128]
-    return cleaned or None
+    return " ".join(value.split())[:128] or None if value is not None else None
 
 
 def _status(value: str | None) -> str | None:
-    cleaned = _text(value)
-    return cleaned.lower() if cleaned else None
+    return cleaned.lower() if (cleaned := _text(value)) else None
 
 
 def _mac_address(value: str | None) -> str | None:
     """Validate and format a 6-octet MAC address, rejecting placeholders."""
     cleaned = _text(value)
-    if not cleaned or not _MAC_RE.match(cleaned):
+    if not cleaned or not _MAC_RE.fullmatch(cleaned):
         return None
     hex_digits = cleaned.replace(":", "").replace("-", "").lower()
     formatted = ":".join(hex_digits[i : i + 2] for i in range(0, 12, 2))
@@ -234,29 +266,25 @@ def _mac_address(value: str | None) -> str | None:
 
 
 def _first_numeric_token(value: str | None) -> str | None:
-    if value is None:
-        return None
-    tokens = value.replace(",", "").strip().split()
+    tokens = value.replace(",", "").split(maxsplit=1) if value else []
     return tokens[0] if tokens else None
 
 
 def _number(value: str | None) -> int | float | None:
-    token = _first_numeric_token(value)
-    if token is None:
+    if (token := _first_numeric_token(value)) is None:
         return None
     try:
         parsed = float(token)
     except ValueError:
         return None
-    if not math.isfinite(parsed):
+    if not math.isfinite(parsed) or parsed < 0:
         return None
     return int(parsed) if parsed.is_integer() else parsed
 
 
 def _int_counter(value: str | None) -> int | None:
     """Parse non-negative integer counters directly without float precision loss."""
-    token = _first_numeric_token(value)
-    if token is None:
+    if (token := _first_numeric_token(value)) is None:
         return None
     try:
         parsed = int(token)
@@ -266,17 +294,15 @@ def _int_counter(value: str | None) -> int | None:
 
 
 def _duration_seconds(value: str | None) -> int | None:
-    if not value:
-        return None
-    match = _DURATION_RE.match(value.strip())
-    if not match:
+    if not value or not (match := _DURATION_RE.match(value.strip())):
         return None
     days_raw, hours_raw, minutes_raw, seconds_raw = match.groups()
     days = int(days_raw) if days_raw else 0
     hours, minutes, seconds = int(hours_raw), int(minutes_raw), int(seconds_raw)
     if minutes > 59 or seconds > 59:
         return None
-    return days * 86400 + hours * 3600 + minutes * 60 + seconds
+    total = days * 86400 + hours * 3600 + minutes * 60 + seconds
+    return total if total <= MAX_UPTIME_SECONDS else None
 
 
 class _HttpStatusError(Exception):
@@ -295,9 +321,7 @@ def _safe_error_code(exc: Exception) -> str:
         return f"http_{exc.status}"
     if isinstance(exc, aiohttp.ClientError):
         return "network_error"
-    if isinstance(exc, ValueError):
-        return "parse_error"
-    return "unexpected_error"
+    return "parse_error" if isinstance(exc, ValueError) else "unexpected_error"
 
 
 class BgwGatewayClient:
@@ -321,16 +345,20 @@ class BgwGatewayClient:
 
     async def async_fetch_page(self, page: str) -> str:
         """Fetch a single gateway status page."""
-        path = PAGE_PATHS[page]
         async with self._session.get(
-            f"{self._base_url}{path}",
-            headers={"User-Agent": USER_AGENT},
+            f"{self._base_url}{PAGE_PATHS[page]}",
+            headers=_HEADERS,
             timeout=self._timeout,
         ) as response:
             if response.status >= 400:
                 raise _HttpStatusError(response.status)
-            raw_bytes = await response.content.read(MAX_RESPONSE_BYTES)
-            return raw_bytes.decode("utf-8", "replace")
+            content = response.content
+            buf = bytearray()
+            while (rem := MAX_RESPONSE_BYTES - len(buf)) > 0 and (
+                chunk := await content.read(rem)
+            ):
+                buf.extend(chunk[:rem])
+            return buf.decode("utf-8", "replace")
 
     async def async_collect(self) -> BgwSnapshot:
         """Sequentially fetch and normalize gateway status pages, failing fast on core errors."""
@@ -339,14 +367,17 @@ class BgwGatewayClient:
 
         for page in PAGE_PATHS:
             try:
-                html = await self.async_fetch_page(page)
-                rows = parse_label_value_rows(html)
-                if not rows:
-                    raise ValueError("no table rows")
-                parsed[page] = rows
+                rows = parse_label_value_rows(await self.async_fetch_page(page))
+                index = _build_label_index(rows)
+                if not index or (
+                    (req_labels := REQUIRED_PAGE_LABELS.get(page)) is not None
+                    and not _text(_lookup(index, *req_labels))
+                ):
+                    raise ValueError("missing required table rows")
+                parsed[page] = index
             except Exception as exc:  # noqa: BLE001
                 code = _safe_error_code(exc)
-                if page in REQUIRED_PAGES:
+                if page in REQUIRED_PAGE_LABELS:
                     if code == "parse_error":
                         raise BgwParseError(
                             f"Unable to parse {page} status page"
@@ -356,81 +387,97 @@ class BgwGatewayClient:
                     ) from exc
                 failures[page] = code
 
-        system = _build_label_index(parsed["system"])
-        broadband = _build_label_index(parsed["broadband"])
+        system = parsed["system"]
+        broadband = parsed["broadband"]
 
-        model = _text(_lookup(system, "Model Number", "Model", "Device Model"))
-        connection = _status(
-            _lookup(broadband, "Broadband Connection", "Connection Status")
-        )
+        model = _text(_lookup(system, *REQUIRED_PAGE_LABELS["system"]))
+        connection = _status(_lookup(broadband, *REQUIRED_PAGE_LABELS["broadband"]))
         if not model or not connection:
             raise BgwParseError("Gateway response missing model or broadband state")
 
-        gateway_info = GatewayInfo(
-            model=model,
-            manufacturer=_text(_lookup(system, "Manufacturer", "Vendor")),
-            firmware=_text(
-                _lookup(system, "Software Version", "Firmware Version", "Firmware")
-            ),
-            uptime_seconds=_duration_seconds(
-                _lookup(system, "Time Since Last Reboot", "System Uptime", "Uptime")
-            ),
-            mac_address=_mac_address(_lookup(system, "MAC Address", "Device MAC")),
-            serial_number=_text(_lookup(system, "Serial Number", "Serial")),
-        )
-
-        broadband_info = BroadbandInfo(
-            connection=connection,
-            network_type=_text(
-                _lookup(broadband, "Broadband Network Type", "Network Type")
-            ),
-            line_state=_status(_lookup(broadband, "Line State", "PON Link Status")),
-            speed_mbps=_number(
-                _lookup(
-                    broadband,
-                    "Current Speed (Mbps)",
-                    "Current Speed",
-                    "Negotiated Speed (Mbps)",
-                )
-            ),
-            duplex=_status(_lookup(broadband, "Current Duplex", "Duplex")),
-            rx_packets=_int_counter(
-                _lookup(broadband, "Receive Packets", "Received Packets", "RX Packets")
-            ),
-            tx_packets=_int_counter(
-                _lookup(
-                    broadband, "Transmit Packets", "Transmitted Packets", "TX Packets"
-                )
-            ),
-            rx_bytes=_int_counter(
-                _lookup(broadband, "Receive Bytes", "Received Bytes", "RX Bytes")
-            ),
-            tx_bytes=_int_counter(
-                _lookup(broadband, "Transmit Bytes", "Transmitted Bytes", "TX Bytes")
-            ),
-            rx_drops=_int_counter(_lookup(broadband, "Receive Drops", "RX Drops")),
-            tx_drops=_int_counter(_lookup(broadband, "Transmit Drops", "TX Drops")),
-            rx_errors=_int_counter(_lookup(broadband, "Receive Errors", "RX Errors")),
-            tx_errors=_int_counter(_lookup(broadband, "Transmit Errors", "TX Errors")),
-            collisions=_int_counter(_lookup(broadband, "Collisions")),
-            tx_discards=_int_counter(
-                _lookup(broadband, "Transmit Discards", "TX Discards")
-            ),
-        )
-
         firewall_info: FirewallInfo | None = None
-        if "firewall" in parsed:
-            fw = _build_label_index(parsed["firewall"])
-            firewall_info = FirewallInfo(
-                packet_filter=_status(_lookup(fw, "Packet Filter")),
-                ip_passthrough=_status(_lookup(fw, "IP Passthrough")),
-                nat_default_server=_status(_lookup(fw, "NAT Default Server")),
-                advanced=_status(_lookup(fw, "Firewall Advanced", "Advanced")),
+        if (fw := parsed.get("firewall")) is not None:
+            fw_vals = (
+                _status(_lookup(fw, "Packet Filter")),
+                _status(_lookup(fw, "IP Passthrough")),
+                _status(_lookup(fw, "NAT Default Server")),
+                _status(_lookup(fw, "Firewall Advanced", "Advanced")),
             )
+            if any(fw_vals):
+                firewall_info = FirewallInfo(*fw_vals)
+            else:
+                failures["firewall"] = "parse_error"
 
         return BgwSnapshot(
-            gateway=gateway_info,
-            broadband=broadband_info,
+            gateway=GatewayInfo(
+                model=model,
+                manufacturer=_text(_lookup(system, "Manufacturer", "Vendor")),
+                firmware=_text(
+                    _lookup(
+                        system, "Software Version", "Firmware Version", "Firmware"
+                    )
+                ),
+                uptime_seconds=_duration_seconds(
+                    _lookup(
+                        system, "Time Since Last Reboot", "System Uptime", "Uptime"
+                    )
+                ),
+                mac_address=_mac_address(_lookup(system, "MAC Address", "Device MAC")),
+                serial_number=_text(_lookup(system, "Serial Number", "Serial")),
+            ),
+            broadband=BroadbandInfo(
+                connection=connection,
+                network_type=_text(
+                    _lookup(broadband, "Broadband Network Type", "Network Type")
+                ),
+                line_state=_status(
+                    _lookup(broadband, "Line State", "PON Link Status")
+                ),
+                speed_mbps=_number(
+                    _lookup(
+                        broadband,
+                        "Current Speed (Mbps)",
+                        "Current Speed",
+                        "Negotiated Speed (Mbps)",
+                    )
+                ),
+                duplex=_status(_lookup(broadband, "Current Duplex", "Duplex")),
+                rx_packets=_int_counter(
+                    _lookup(
+                        broadband, "Receive Packets", "Received Packets", "RX Packets"
+                    )
+                ),
+                tx_packets=_int_counter(
+                    _lookup(
+                        broadband,
+                        "Transmit Packets",
+                        "Transmitted Packets",
+                        "TX Packets",
+                    )
+                ),
+                rx_bytes=_int_counter(
+                    _lookup(broadband, "Receive Bytes", "Received Bytes", "RX Bytes")
+                ),
+                tx_bytes=_int_counter(
+                    _lookup(
+                        broadband, "Transmit Bytes", "Transmitted Bytes", "TX Bytes"
+                    )
+                ),
+                rx_drops=_int_counter(_lookup(broadband, "Receive Drops", "RX Drops")),
+                tx_drops=_int_counter(
+                    _lookup(broadband, "Transmit Drops", "TX Drops")
+                ),
+                rx_errors=_int_counter(
+                    _lookup(broadband, "Receive Errors", "RX Errors")
+                ),
+                tx_errors=_int_counter(
+                    _lookup(broadband, "Transmit Errors", "TX Errors")
+                ),
+                collisions=_int_counter(_lookup(broadband, "Collisions")),
+                tx_discards=_int_counter(
+                    _lookup(broadband, "Transmit Discards", "TX Discards")
+                ),
+            ),
             firewall=firewall_info,
             failed_pages=failures,
         )
